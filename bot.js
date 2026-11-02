@@ -8,12 +8,12 @@ const A = CFG.agency;
 
 function systemPrompt(c) {
   return `You are the WhatsApp ${A.assistantName} for ${A.name}, an estate agency in ${A.area}, South Africa. You reply to property buyers' enquiries.
-Style: warm, friendly, local South African English (light touches like "Sharp", "no stress" are fine), SHORT WhatsApp messages (1-3 sentences), one question at a time. Use Rands. Never use the words "AI", "bot", "artificial", "language model". If asked whether you are a robot, a person or anything similar, never deny it and never say "not at all": simply say you're ${A.name}'s digital assistant that runs 24/7, and ${A.agentName} (the agent) will be in touch personally.
+Style: text exactly like a real South African estate agent on WhatsApp. Short casual messages, usually one or two lines, one question at a time. Relaxed punctuation is fine, lowercase starts are ok but always capitalise names (people, agency, places). NEVER use colons, dashes or hyphens as punctuation, em dashes, bullet points, numbered lists, bold or any formal structure. Write times like 10am or 2pm. Local touches like "sharp", "no stress", "lekker" are fine but don't overdo it. Use Rands. Never use the words "AI", "bot", "artificial", "language model". If asked whether you are a robot, a person or anything similar, never deny it and never say "not at all": simply say you're the digital assistant for ${A.name} that runs 24/7, and ${A.agentName} (the agent) will be in touch personally.
 When qualified becomes true, your reply must ONLY thank them briefly (e.g. "Thanks, that's everything I need!"). Do NOT ask about days, times, weekdays or weekends; the system sends the viewing slots straight after your message.
 Listings (only these exist; never invent others or details): ${JSON.stringify(A.listings)}
 Your goal: answer their question briefly, then qualify by collecting: listing of interest, budget, finance (bond pre-approved / applying / cash), timeline to buy, whether they have a home to sell first, and their name. Then the system will offer viewing slots.
 Current known lead info: ${JSON.stringify(c.lead)}
-Stage: ${c.stage}. ${c.stage==='offer'||c.stage==='booking' ? `Offered slots: ${JSON.stringify(c.offered)}. If the buyer picks one, set chosenSlot to the exact slot string.` : ''}
+Stage: ${c.stage}. ${c.stage==='offer'||c.stage==='booking' ? `Offered slots: ${JSON.stringify(c.offered)} (shown to buyer as ${c.offered ? c.offered.map(nice).join(', ') : ''}). If the buyer picks one, set chosenSlot to the exact slot string.` : ''}
 Return ONLY JSON: {"reply": string, "lead": {"name","listing","budget","finance","timeline","homeToSell"} (fill what you know, null otherwise), "qualified": boolean (true when listing, budget, finance, timeline, homeToSell all known), "chosenSlot": string|null}`;
 }
 
@@ -33,7 +33,12 @@ async function gemini(c, text) {
   return { reply: `Thanks for your message! ${A.agentName} from ${A.name} will get back to you shortly.`, lead: {}, qualified: false, chosenSlot: null };
 }
 
-const clean = s => s.replace(/\bA\.?I\.?\b/g, 'digital assistant').replace(/\bbot\b/gi, 'assistant');
+const clean = s => s.replace(/\bA\.?I\.?\b/g, 'digital assistant').replace(/\bbot\b/gi, 'assistant')
+  .replace(/\*\*?|__/g, '').replace(/^\s*(?:[-*•]|\d+[.)])\s+/gm, '')
+  .replace(/\b(\d{1,2}):(\d{2})\b/g, (m, h, mm) => { h = +h; const ap = h >= 12 ? 'pm' : 'am'; const h12 = h % 12 || 12; return h12 + (mm === '00' ? '' : ':' + mm).replace(':', '.') + ap; })
+  .replace(/\s*[—–]\s*/g, ', ').replace(/\s+-\s+/g, ', ').replace(/\s*:\s*/g, ', ')
+  .replace(/,\s*,/g, ',').replace(/,\s*([.!?])/g, '$1').trim();
+const nice = slot => clean(slot);
 
 function score(l) {
   const f = (l.finance || '').toLowerCase(), t = (l.timeline || '').toLowerCase(), sell = (l.homeToSell || '').toString().toLowerCase();
@@ -60,12 +65,12 @@ async function handle(from, text) {
     const pick = g.chosenSlot && (c.offered || []).find(s => s.toLowerCase() === String(g.chosenSlot).toLowerCase());
     if (c.stage === 'offer' && pick) {
       c.booked = pick; c.stage = 'done';
-      out.push(clean(`Sharp, you're booked for ${pick}${c.lead.listing ? ` to view ${c.lead.listing}` : ''}! ${A.agentName} will confirm the address and meet you there. Reply here anytime if you need to move it.`));
+      out.push(clean(`sharp you're booked for ${pick}, ${A.agentName} will send you the address and meet you there. just shout here if you need to move it`));
       agentSummary = summary(c, from);
     } else if (c.stage === 'qualify' && g.qualified) {
       c.offered = A.viewingSlots.slice(0, 3); c.stage = 'offer';
       out.push(clean(g.reply));
-      out.push(`Would any of these viewing times work?\n1. ${c.offered[0]}\n2. ${c.offered[1]}\n3. ${c.offered[2]}`);
+      out.push(`I've got ${nice(c.offered[0])}, ${nice(c.offered[1])} or ${nice(c.offered[2])} for a viewing, which works?`);
     } else {
       const m = c.stage === 'offer' && /^\s*([123])\s*$/.exec(text);
       if (m) return (S[from] = c, save(S), handle(from, c.offered[m[1] - 1]));
