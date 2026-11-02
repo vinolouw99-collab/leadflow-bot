@@ -1,0 +1,15 @@
+{
+  "agency": {
+    "name": "Est. Properties",
+    "assistantName": "Est. Properties assistant",
+    "agentName": "Mark",
+    "area": "Gauteng",
+    "listings": [
+      {"ref": "EX-101", "title": "EXAMPLE: 3-bed family home, Bryanston", "price": "R2,450,000", "details": "3 bed, 2 bath, double garage, pool, pet friendly"},
+      {"ref": "EX-102", "title": "EXAMPLE: 2-bed apartment, Rosebank", "price": "R1,350,000", "details": "2 bed, 1 bath, balcony, 24h security, near Gautrain"},
+      {"ref": "EX-103", "title": "EXAMPLE: 4-bed home, Midrand", "price": "R3,200,000", "details": "4 bed, 3 bath, garden, solar, secure estate"}
+    ],
+    "viewingSlots": ["Sat 10:00", "Sat 12:00", "Sun 14:00", "Mon 17:30", "Wed 17:30"]
+  },
+  "models": ["gemini-3.5-flash", "gemini-flash-latest", "gemini-3.5-flash-lite"]
+}
