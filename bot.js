@@ -67,7 +67,7 @@ async function handle(from, text) {
       c.booked = pick; c.stage = 'done';
       out.push(clean(`sharp you're booked for ${pick}, ${A.agentName} will send you the address and meet you there. just shout here if you need to move it`));
       agentSummary = summary(c, from);
-    } else if (c.stage === 'qualify' && g.qualified) {
+    } else if (c.stage === 'qualify' && ['listing','budget','finance','timeline','homeToSell'].every(k => c.lead[k] != null && c.lead[k] !== '')) {
       c.offered = A.viewingSlots.slice(0, 3); c.stage = 'offer';
       out.push(clean(g.reply));
       out.push(`i've got ${nice(c.offered[0])}, ${nice(c.offered[1])} or ${nice(c.offered[2])} for a viewing, which one suits you?`);

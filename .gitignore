@@ -4,3 +4,4 @@ node_modules
 .env
 webhook-info.txt
 *.log
+run-*.sh
