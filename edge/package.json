@@ -1,0 +1,1 @@
+{"name":"leadflow-bot-edge","private":true,"scripts":{"dev":"wrangler dev","deploy":"./deploy.sh"},"devDependencies":{"wrangler":"^4.86.0"}}

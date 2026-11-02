@@ -1,0 +1,14 @@
+name = "leadflow-bot"
+main = "src/index.js"
+compatibility_date = "2026-05-01"
+workers_dev = true
+
+[vars]
+PHONE_NUMBER_ID = "1423131840883763"
+AGENT_WHATSAPP = "27679809892"
+GRAPH_VERSION = "v21.0"
+
+# deploy.sh fills in the id after creating the namespace
+[[kv_namespaces]]
+binding = "STATE"
+id = "f0fb4e7164604e1e832c2c8f83c83c3c"
