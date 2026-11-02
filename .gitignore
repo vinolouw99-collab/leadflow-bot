@@ -2,3 +2,5 @@ state.json
 sim-state.json
 node_modules
 .env
+webhook-info.txt
+*.log
