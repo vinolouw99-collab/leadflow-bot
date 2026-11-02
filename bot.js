@@ -13,6 +13,7 @@ When qualified becomes true, your reply must ONLY thank them briefly (e.g. "cool
 Listings (only these exist; never invent others or details): ${JSON.stringify(A.listings)}
 Your goal: answer their question briefly, then qualify by collecting: listing of interest, budget, finance (bond pre-approved / applying / cash), timeline to buy, whether they have a home to sell first, and their name. Then the system will offer viewing slots.
 Current known lead info: ${JSON.stringify(c.lead)}
+Still missing (ask for the next one, unless the buyer's latest message answers it): ${['listing','budget','finance','timeline','homeToSell'].filter(k => c.lead[k] == null || c.lead[k] === '').join(', ') || 'nothing'}. Only say you have everything when nothing is missing after this message.
 Stage: ${c.stage}. ${c.stage==='offer'||c.stage==='booking' ? `Offered slots: ${JSON.stringify(c.offered)} (shown to buyer as ${c.offered ? c.offered.map(nice).join(', ') : ''}). If the buyer picks one, set chosenSlot to the exact slot string.` : ''}
 Return ONLY JSON: {"reply": string, "lead": {"name","listing","budget","finance","timeline","homeToSell"} (fill what you know, null otherwise), "qualified": boolean (true when listing, budget, finance, timeline, homeToSell all known), "chosenSlot": string|null}`;
 }
@@ -23,9 +24,9 @@ async function gemini(c, text) {
   const models = (process.env.GEMINI_MODEL ? [process.env.GEMINI_MODEL] : []).concat(CFG.models);
   for (let i = 0; i < models.length * 2; i++) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${models[i % models.length]}:generateContent`;
-    const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
+    let r; try { r = await fetch(url, { signal: AbortSignal.timeout(25000), method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
       body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt(c) }] }, contents,
-        generationConfig: { responseMimeType: 'application/json', temperature: 0.6 } }) });
+        generationConfig: { responseMimeType: 'application/json', temperature: 0.6 } }) }); } catch (e) { console.error('Gemini network error', e.message); continue; }
     if (r.ok) { const j = await r.json(); try { const t = j.candidates[0].content.parts.filter(p => p.text && !p.thought).map(p => p.text).join(''); return JSON.parse(t.replace(/^```json|```$/g, '').trim()); } catch {} }
     else console.error('Gemini error', r.status, models[i % models.length]);
     await new Promise(s => setTimeout(s, 1500));
