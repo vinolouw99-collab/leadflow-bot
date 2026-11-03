@@ -7,6 +7,7 @@ async function send(env, to, body) {
   if (!r.ok) console.error('Graph send failed', r.status, await r.text());
 }
 async function process(env, payload) {
+  for (const e of payload.entry || []) for (const ch of e.changes || []) for (const s of ch.value?.statuses || []) console.log("STATUS", JSON.stringify(s));
   for (const e of payload.entry || []) for (const ch of e.changes || []) for (const m of ch.value?.messages || []) {
     // dedupe Meta retries
     if (await env.STATE.get('m:' + m.id)) continue;
