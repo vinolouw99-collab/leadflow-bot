@@ -1,6 +1,6 @@
 // LeadFlow core for Cloudflare Workers (ported from bot/bot.js). State per sender in KV.
 import CFG from './config.json';
-const A = CFG.agency;
+let A = CFG.agency;
 let ENV = {};
 
 function systemPrompt(c) {
@@ -28,10 +28,10 @@ async function gemini(c, text) {
     else console.error('Gemini error', r.status, models[i % models.length]);
     await new Promise(s => setTimeout(s, 1500));
   }
-  return { reply: `Thanks for your message! ${A.agentName} from ${A.name} will get back to you shortly.`, lead: {}, qualified: false, chosenSlot: null };
+  return { reply: `thanks for your message, ${A.agentName} from ${A.name} will get back to you shortly`, lead: {}, qualified: false, chosenSlot: null };
 }
 
-const clean = s => s.replace(/\bA\.?I\.?\b/g, 'digital assistant').replace(/\bbot\b/gi, 'assistant')
+const clean = s => s.replace(/!+/g, '.').replace(/\.\s*\./g, '.').replace(/\bA\.?I\.?\b/g, 'digital assistant').replace(/\bbot\b/gi, 'assistant')
   .replace(/\*\*?|__/g, '').replace(/^\s*(?:[-*•]|\d+[.)])\s+/gm, '')
   .replace(/\b(\d{1,2}):(\d{2})\b/g, (m, h, mm) => { h = +h; const ap = h >= 12 ? 'pm' : 'am'; const h12 = h % 12 || 12; return h12 + (mm === '00' ? '' : ':' + mm).replace(':', '.') + ap; })
   .replace(/\s*[—–]\s*/g, ', ').replace(/\s+-\s+/g, ', ').replace(/\s*:\s*/g, ', ')
@@ -52,9 +52,9 @@ function summary(c, from) {
   return `*New lead – ${score(l)}* (${A.name})\nName: ${l.name || '-'}\nWhatsApp: +${from}\nListing: ${l.listing || '-'}\nBudget: ${l.budget || '-'}\nFinance: ${l.finance || '-'}\nTimeline: ${l.timeline || '-'}\nHome to sell: ${l.homeToSell ?? '-'}\nViewing: ${c.booked || 'not booked'}\nFirst contact: ${c.started}`;
 }
 
-async function handle(env, from, text, depth = 0) {
-  ENV = env;
-  const key = 'c:' + from;
+async function handle(env, from, text, depth = 0, opts = {}) {
+  ENV = env; A = opts.agency || CFG.agency;
+  const key = (opts.prefix || 'c:') + from;
   const c = (await env.STATE.get(key, 'json')) || { stage: 'qualify', lead: {}, history: [], started: new Date().toISOString() };
   const n = c.stage === 'offer' && /^\s*([123])\s*$/.exec(text);
   if (n && c.offered) text = c.offered[n[1] - 1];  // map '2' to the slot before asking Gemini
@@ -74,13 +74,13 @@ async function handle(env, from, text, depth = 0) {
       out.push(`i've got ${nice(c.offered[0])}, ${nice(c.offered[1])} or ${nice(c.offered[2])} for a viewing, which one suits you?`);
     } else {
       const m = c.stage === 'offer' && !depth && /^\s*([123])\s*$/.exec(text);
-      if (m) return handle(env, from, c.offered[m[1] - 1], 1);
+      if (m) return handle(env, from, c.offered[m[1] - 1], 1, opts);
       out.push(clean(g.reply));
     }
   }
   c.history.push({ r: 'user', t: text }, ...out.map(t => ({ r: 'bot', t })));
   c.history = c.history.slice(-30);
-  await env.STATE.put(key, JSON.stringify(c), { expirationTtl: 60 * 60 * 24 * 30 });
+  await env.STATE.put(key, JSON.stringify(c), { expirationTtl: opts.ttl || 60 * 60 * 24 * 30 });
   return { replies: out, agentSummary, stage: c.stage, lead: c.lead };
 }
 export { handle, summary, score, CFG };

@@ -1,4 +1,5 @@
 import { handle } from './core.js';
+import { demoChat, DEMO_HTML } from './demo.js';
 async function send(env, to, body) {
   if (!env.WHATSAPP_TOKEN) return console.log('[no WHATSAPP_TOKEN] would send to', to, body);
   const r = await fetch(`https://graph.facebook.com/${env.GRAPH_VERSION || 'v21.0'}/${env.PHONE_NUMBER_ID}/messages`, { method: 'POST',
@@ -12,7 +13,7 @@ async function process(env, payload) {
     // dedupe Meta retries
     if (await env.STATE.get('m:' + m.id)) continue;
     await env.STATE.put('m:' + m.id, '1', { expirationTtl: 86400 });
-    if (m.type !== 'text') { await send(env, m.from, "thanks! please send that as a text message and i'll help right away"); continue; }
+    if (m.type !== 'text') { await send(env, m.from, "thanks, please send that as a text message and i'll help right away"); continue; }
     const r = await handle(env, m.from, m.text.body);
     for (const t of r.replies) await send(env, m.from, t);
     if (r.agentSummary) env.AGENT_WHATSAPP ? await send(env, env.AGENT_WHATSAPP, r.agentSummary) : console.log(r.agentSummary);
@@ -30,6 +31,8 @@ export default {
       ctx.waitUntil(process(env, p).catch(e => console.error(e)));  // ack Meta fast, work continues
       return new Response('ok');
     }
+    if (u.pathname === '/demo' || u.pathname === '/demo/') return new Response(DEMO_HTML, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    if (u.pathname === '/demo/chat' && req.method === 'POST') return demoChat(req, env);
     return new Response('LeadFlow running');
   }
 };
