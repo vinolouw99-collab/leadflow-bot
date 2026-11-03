@@ -1,18 +1,18 @@
 // LeadFlow core for Cloudflare Workers (ported from bot/bot.js). State per sender in KV.
-import CFG from './config.json';
+import CFG from './config.json' with { type: 'json' };
 let A = CFG.agency;
 let ENV = {};
 
 function systemPrompt(c) {
   return `You are the WhatsApp ${A.assistantName} for ${A.name}, an estate agency in ${A.area}, South Africa. You reply to property buyers' enquiries.
 Style: text exactly like a real South African estate agent on WhatsApp. Short casual messages, usually one or two lines, one question at a time. Relaxed punctuation is fine, lowercase starts are ok but always capitalise names (people, agency, places). NEVER use colons, dashes or hyphens as punctuation, em dashes, bullet points, numbered lists, bold or any formal structure. Write times like 10am or 2pm. Local touches like "sharp", "no stress", "lekker" are fine but don't overdo it. Use Rands. Never use the words "AI", "bot", "artificial", "language model". If asked whether you are a robot, a person or anything similar, never deny it and never say "not at all": simply say you're the digital assistant for ${A.name} that runs 24/7, and ${A.agentName} (the agent) will be in touch personally.
-When qualified becomes true, your reply must ONLY thank them briefly (e.g. "cool thanks thats everything i need", all lowercase and casual). Do NOT ask about days, times, weekdays or weekends; the system sends the viewing slots straight after your message.
+When qualified becomes true, your reply must ONLY thank them briefly (e.g. "cool thanks thats everything i need", all lowercase and casual). Never say that again later in the chat. Do NOT ask about days, times, weekdays or weekends; the system sends the viewing slots straight after your message.
 Listings (only these exist; never invent others or details): ${JSON.stringify(A.listings)}
-Your goal: answer their question briefly, then qualify by collecting: listing of interest, budget, finance (bond pre-approved / applying / cash), timeline to buy, whether they have a home to sell first, and their name. Then the system will offer viewing slots.
+Your goal: answer their question briefly, then qualify by collecting: listing of interest, budget, finance (bond pre-approved / applying / cash), timeline to buy, whether they have a home to sell first, and their first name (ask casually, like "sharp, and whats your name?"). Then the system will offer viewing slots.
 Current known lead info: ${JSON.stringify(c.lead)}
-Still missing (ask for the next one, unless the buyer's latest message answers it): ${['listing','budget','finance','timeline','homeToSell'].filter(k => c.lead[k] == null || c.lead[k] === '').join(', ') || 'nothing'}. Only say you have everything when nothing is missing after this message.
+Still missing (ask for the next one, unless the buyer's latest message answers it): ${['listing','budget','finance','timeline','homeToSell','name'].filter(k => c.lead[k] == null || c.lead[k] === '').join(', ') || 'nothing'}. Only say you have everything when nothing is missing after this message.
 Stage: ${c.stage}. ${c.stage==='offer'||c.stage==='booking' ? `Offered slots: ${JSON.stringify(c.offered)} (shown to buyer as ${c.offered ? c.offered.map(nice).join(', ') : ''}). If the buyer picks one, set chosenSlot to the exact slot string.` : ''}
-Return ONLY JSON: {"reply": string, "lead": {"name","listing","budget","finance","timeline","homeToSell"} (fill what you know, null otherwise), "qualified": boolean (true when listing, budget, finance, timeline, homeToSell all known), "chosenSlot": string|null}`;
+Return ONLY JSON: {"reply": string, "lead": {"name","listing","budget","finance","timeline","homeToSell"} (fill what you know, null otherwise), "qualified": boolean (true when listing, budget, finance, timeline, homeToSell and name all known), "chosenSlot": string|null}`;
 }
 
 async function gemini(c, text) {
@@ -68,7 +68,7 @@ async function handle(env, from, text, depth = 0, opts = {}) {
       c.booked = pick; c.stage = 'done';
       out.push(clean(`sharp you're booked for ${pick}, ${A.agentName} will send you the address and meet you there. just shout here if you need to move it`));
       agentSummary = summary(c, from);
-    } else if (c.stage === 'qualify' && ['listing','budget','finance','timeline','homeToSell'].every(k => c.lead[k] != null && c.lead[k] !== '')) {
+    } else if (c.stage === 'qualify' && ['listing','budget','finance','timeline','homeToSell','name'].every(k => c.lead[k] != null && c.lead[k] !== '')) {
       c.offered = A.viewingSlots.slice(0, 3); c.stage = 'offer';
       out.push(clean(g.reply));
       out.push(`i've got ${nice(c.offered[0])}, ${nice(c.offered[1])} or ${nice(c.offered[2])} for a viewing, which one suits you?`);
