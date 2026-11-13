@@ -62,7 +62,7 @@ form button{width:44px;height:44px;border:0;border-radius:50%;background:#00a884
 </style></head><body><div class="app">
 <div class="brand"><b>LeadFlow</b> <span>try it yourself</span><br>Pretend you're a buyer and message about a listing. Watch it reply in seconds, ask the right questions and book you a viewing, 24/7.</div>
 <div class="top"><div class="av">SR</div><div><div class="n">Sunset Realty (sample agency)</div><div class="s">digital assistant, replies 24/7</div></div></div>
-<div id="log"><div class="note">Sample listings: 3 bed home in Bryanston R2.45m, 2 bed flat in Rosebank R1.35m, 4 bed home in Midrand R3.2m, 6 bed estate home in Sandhurst R22.5m (try it as a serious buyer and see how it checks funds)</div></div>
+<div id="log"><div class="note">Sample listings: 3 bed home in Bryanston R2.45m, 2 bed flat in Rosebank R1.35m, 4 bed home in Midrand R3.2m, 6 bed estate home in Sandhurst R22.5m. Every buyer is qualified the same way, including proof of funds, before a viewing is booked</div></div>
 <div class="typing" id="ty"></div>
 <div class="chips" id="chips"><button>Hi, is the Rosebank flat still available?</button><button>Hi, I saw the Bryanston house</button><button>What's the price on the Midrand home?</button><button>Hi, is the Sandhurst estate home still available?</button></div>
 <form id="f"><input type="file" id="fl" hidden><button type="button" id="at" class="at" aria-label="Attach" title="Attach a document (demo, the file stays on your device)">&#128206;</button><input id="t" placeholder="Type a message" autocomplete="off" maxlength="500"><button aria-label="Send">&#10148;</button></form>
