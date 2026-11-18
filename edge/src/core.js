@@ -2,8 +2,10 @@
 import CFG from './config.json' with { type: 'json' };
 let A = CFG.agency;
 let ENV = {};
-const BASIC = ['listing','budget','finance','timeline','homeToSell','name'];
+const RENTAL = ['listing','budget','income','occupants','pets','timeline','name'];
 const HV = ['listing','finance','budget','buyingAs','sourceOfFunds','timeline','homeToSell','name','proofOfFunds'];
+const SALE_ONLY = new Set(['finance','homeToSell','buyingAs','sourceOfFunds','proofOfFunds']);
+const SALE_LEAK = /\b(cash or (a )?bond|source of funds|proof of funds|bond approval|pre-?approv|sell (a )?(home|house|property) first|need to sell|buying as)\b/i;
 const kw = x => x.title.toLowerCase().split(/[ ,]+/).filter(w => w.length > 4 && !/house|home|apartment|family|estate/.test(w));
 function guessListing(text) { const t = String(text).toLowerCase(); return (A.listings || []).find(x => t.includes(x.ref.toLowerCase()) || kw(x).some(w => t.includes(w))); }
 function isRentalListing(x) {
@@ -16,23 +18,49 @@ function matchedListing(c) {
   const ref = String(l.listingRef || '').toUpperCase(), txt = String(l.listing || '').toLowerCase();
   return ls.find(x => x.ref.toUpperCase() === ref) || ls.find(x => txt && (txt.includes(x.ref.toLowerCase()) || kw(x).some(w => txt.includes(w)))) || null;
 }
-// Strict proof of funds qualification for every buyer, any price. Rentals keep the lighter BASIC flow.
+// Strict proof of funds qualification for every buyer, any price. Rentals use a lighter flow (budget, income, occupants, pets, move in date, name).
 function listingOf(c) { const hit = matchedListing(c); return hit && !isRentalListing(hit) ? hit : null; }
 function strictBuyer(c) { const hit = matchedListing(c); return !(hit && isRentalListing(hit)); }
-const need = (c, strict) => (strict ? HV : BASIC).filter(k => k === 'proofOfFunds' ? c.lead.proofOfFunds !== 'received' : (c.lead[k] == null || c.lead[k] === ''));
+const need = (c, strict) => (strict ? HV : RENTAL).filter(k => k === 'proofOfFunds' ? c.lead.proofOfFunds !== 'received' : (c.lead[k] == null || c.lead[k] === ''));
+const rentalAsk = field => ({
+  listing: 'which listing were you enquiring on?',
+  budget: 'what is your monthly rental budget?',
+  income: 'and what is your monthly income, roughly?',
+  occupants: 'how many people will be living there?',
+  pets: 'and do you have any pets?',
+  timeline: 'when would you like to move in?',
+  name: 'thanks, and whats your name?',
+})[field] || 'thanks, could you tell me a bit more?';
 
 function systemPrompt(c) {
   const strict = strictBuyer(c), listing = listingOf(c), missing = need(c, strict);
   return `You are the WhatsApp ${A.assistantName} for ${A.name}, an estate agency in ${A.area}, South Africa. You reply to property buyers' and tenants' enquiries.
 Style: text like a warm, professional estate agent on WhatsApp. Short friendly messages, usually one or two lines, one question at a time. Relaxed punctuation is fine, lowercase starts are ok but always capitalise names (people, agency, places). NEVER use colons, dashes or hyphens as punctuation, em dashes, bullet points, numbered lists, bold or any formal structure. Write times like 10am or 2pm. Keep a polite professional tone that still feels human and personal. Do not use slang, including South African slang such as lekker, shap, howzit, eish, sharp, sharp sharp, ja, awesome sauce, yebo or boet. Warm and natural is good, slang is not. Use Rands. Never use the words "AI", "bot", "artificial", "language model". If asked whether you are a robot, a person or anything similar, never deny it and never say "not at all": simply say you're the digital assistant for ${A.name} that runs 24/7, and ${A.agentName} (the agent) will be in touch personally.
-When qualified becomes true, your reply must ONLY thank them briefly (e.g. "cool thanks thats everything i need", all lowercase and casual). Never say that again later in the chat. Do NOT ask about days, times, weekdays or weekends; the system sends the viewing slots straight after your message.
+When qualified becomes true, your reply must ONLY thank them briefly (e.g. "great thanks, thats everything i need", all lowercase and friendly). Never say that again later in the chat. Do NOT ask about days, times, weekdays or weekends; the system sends the viewing slots straight after your message.
 Listings (only these exist; never invent others or details): ${JSON.stringify(A.listings)}
-Your goal: answer their question briefly, then qualify by collecting: listing of interest, budget, finance (bond pre-approved / applying / cash), timeline to buy, whether they have a home to sell first, and their first name (ask casually, like "thanks, and whats your name?"). Then the system will offer viewing slots.
+${strict ? buyerGoal(listing, c) : rentalPrompt(c)}
 Current known lead info: ${JSON.stringify(c.lead)}
-${strict ? buyerPrompt(listing, c) : ''}
-Still missing (ask for the next one in this order, unless the buyer's latest message answers it): ${missing.join(', ') || 'nothing'}. Only say you have everything when nothing is missing after this message.
-Stage: ${c.stage}. ${c.stage==='offer'||c.stage==='booking' ? `Offered slots: ${JSON.stringify(c.offered)} (shown to buyer as ${c.offered ? c.offered.map(nice).join(', ') : ''}). If the buyer picks one, set chosenSlot to the exact slot string.` : ''}
-Return ONLY JSON: {"reply": string, "lead": {"name","listing","listingRef","budget","finance","timeline","homeToSell","buyingAs","sourceOfFunds","proofOfFunds"} (fill what you know, null otherwise; listingRef is the ref like SR-101; buyingAs, sourceOfFunds and proofOfFunds are required for every buyer), "qualified": boolean (true when nothing is missing), "declined": boolean (for buyer qualification, see above), "chosenSlot": string|null}`;
+Still missing (ask for the next one in this order, unless their latest message answers it): ${missing.join(', ') || 'nothing'}. Only say you have everything when nothing is missing after this message.
+Stage: ${c.stage}. ${c.stage==='offer'||c.stage==='booking' ? `Offered slots: ${JSON.stringify(c.offered)} (shown to the person as ${c.offered ? c.offered.map(nice).join(', ') : ''}). If they pick one, set chosenSlot to the exact slot string.` : ''}
+Return ONLY JSON: {"reply": string, "lead": ${strict ? '{"name","listing","listingRef","budget","finance","timeline","homeToSell","buyingAs","sourceOfFunds","proofOfFunds"} (fill what you know, null otherwise; listingRef is the ref like SR-101; buyingAs, sourceOfFunds and proofOfFunds are required for every buyer)' : '{"name","listing","listingRef","budget","income","occupants","pets","timeline"} (fill what you know, null otherwise; listingRef is the ref like SR-105; leave finance, homeToSell, buyingAs, sourceOfFunds and proofOfFunds unset)'}, "qualified": boolean (true when nothing is missing), "declined": boolean (for buyer qualification, see above), "chosenSlot": string|null}`;
+}
+
+function buyerGoal(listing, c) {
+  return `Your goal: answer their question briefly, then qualify by collecting: listing of interest, budget, finance (bond pre-approved / applying / cash), timeline to buy, whether they have a home to sell first, and their first name (ask casually, like "thanks, and whats your name?"). Then the system will offer viewing slots.
+${buyerPrompt(listing, c)}`;
+}
+
+function rentalPrompt(c) {
+  const listing = matchedListing(c);
+  const about = listing ? `The tenant is asking about ${listing.title} at ${listing.price}. ` : '';
+  return `RENTAL QUALIFICATION. ${about}This is a rental enquiry, not a sale. Never ask about cash or bond, source of funds, proof of funds, buying in a personal name, company or trust, or whether they need to sell a home first. Those questions are for buyers only. Your first reply confirms the listing is available with one standout detail (or if they haven't named a listing yet, help them pick one), then asks the first missing item. Ask one thing at a time, in this order.
+budget: their monthly rental budget, in Rands (skip it if they already said the amount).
+income: ask naturally, like "and what is your monthly income, roughly?"
+occupants: how many people will be living there.
+pets: whether they have any pets.
+timeline: when they would like to move in.
+name: their first name (ask casually, like "thanks, and whats your name?").
+Then the system will offer viewing slots.`;
 }
 
 function buyerPrompt(listing, c) {
@@ -93,7 +121,8 @@ const nice = slot => clean(slot);
 
 function score(l) {
   const f = (l.finance || '').toLowerCase(), t = (l.timeline || '').toLowerCase(), sell = (l.homeToSell || '').toString().toLowerCase();
-  const ready = /pre-?approv|cash/.test(f), soon = /now|asap|immediate|week|month|1|2|3/.test(t) && !/year|12|6 month/.test(t);
+  const ready = /pre-?approv|cash/.test(f) || !!l.income;
+  const soon = /now|asap|immediate|week|month|1|2|3/.test(t) && !/year|12|6 month/.test(t);
   const chain = /yes|true|need to sell/.test(sell) && !/sold|no\b/.test(sell);
   if (ready && soon && !chain) return 'Hot';
   if (ready || soon) return 'Warm';
@@ -108,7 +137,7 @@ function summary(c, from) {
     const listed = listing ? `${listing.title} (${listing.price})` : (l.listing || '-');
     return `*${v ? 'Verified buyer' : 'Not verified'}, ${v ? 'Hot' : 'do not book'}* (${A.name})\nName as on ID: ${l.name || '-'}\nWhatsApp: +${from}\nListing: ${listed}\nBuying as: ${l.buyingAs || '-'}\nFunds: ${l.finance || '-'}\nAmount confirmed: ${l.budget || '-'}\nSource of funds: ${l.sourceOfFunds || 'not given'}\nProof of funds: ${l.proofOfFunds === 'received' ? 'received' + (c.docs && c.docs.length ? ' (' + c.docs.join(', ') + ')' : '') + ', agent to check' : l.proofOfFunds === 'promised' ? 'promised, not received' : 'not provided'}\nFICA (ID, proof of address): requested\nTimeline: ${l.timeline || '-'}\nHome to sell: ${l.homeToSell ?? '-'}\nViewing: ${c.booked || (v ? 'not booked' : 'not booked, funds not verified')}\nFirst contact: ${c.started}`;
   }
-  return `*New lead – ${score(l)}* (${A.name})\nName: ${l.name || '-'}\nWhatsApp: +${from}\nListing: ${l.listing || '-'}\nBudget: ${l.budget || '-'}\nFinance: ${l.finance || '-'}\nTimeline: ${l.timeline || '-'}\nHome to sell: ${l.homeToSell ?? '-'}\nViewing: ${c.booked || 'not booked'}\nFirst contact: ${c.started}`;
+  return `*New rental lead – ${score(l)}* (${A.name})\nName: ${l.name || '-'}\nWhatsApp: +${from}\nListing: ${l.listing || '-'}\nBudget: ${l.budget || '-'}\nMonthly income: ${l.income || '-'}\nOccupants: ${l.occupants || '-'}\nPets: ${l.pets || '-'}\nMove in: ${l.timeline || '-'}\nViewing: ${c.booked || 'not booked'}\nFirst contact: ${c.started}`;
 }
 
 async function handle(env, from, text, depth = 0, opts = {}) {
@@ -124,9 +153,9 @@ async function handle(env, from, text, depth = 0, opts = {}) {
   const g = await gemini(c, text);
   if (c.stage === 'done') { out.push(clean(g.reply)); }
   else {
-    const prevPof = c.lead.proofOfFunds;
-    for (const [k, v] of Object.entries(g.lead || {})) if (v !== null && v !== '' && v !== 'null') c.lead[k] = v;
     const strict = strictBuyer(c);
+    const prevPof = c.lead.proofOfFunds;
+    for (const [k, v] of Object.entries(g.lead || {})) if (v !== null && v !== '' && v !== 'null' && (strict || !SALE_ONLY.has(k))) c.lead[k] = v;
     if (strict) {
       // code guard: proof only counts as received on an attachment or a clear "sent" message, never on "i'll send it"
       const sentNow = !!doc || /\b(sent|attached|here (it is|you go)|just sen[dt]|have sent|uploaded)\b/i.test(text) && !/\b(will|i'?ll|gonna|going to|later|tomorrow)\b/i.test(text);
@@ -144,7 +173,7 @@ async function handle(env, from, text, depth = 0, opts = {}) {
       if (c.stage !== 'declined') { c.stage = 'declined'; agentSummary = summary(c, from); }
     } else if ((c.stage === 'qualify' || c.stage === 'declined') && need(c, strict).length === 0) {
       c.offered = A.viewingSlots.slice(0, 3); c.stage = 'offer';
-      out.push(clean(strict ? `perfect thanks ${String(c.lead.name).split(' ')[0]}, got it and passed it to ${A.agentName} to check. you're all set for a private viewing` : g.reply));
+      out.push(clean(strict ? `perfect thanks ${String(c.lead.name).split(' ')[0]}, got it and passed it to ${A.agentName} to check. you're all set for a private viewing` : `great thanks, thats everything i need`));
       out.push(`i've got ${nice(c.offered[0])}, ${nice(c.offered[1])} or ${nice(c.offered[2])} for a viewing, which one suits you?`);
     } else {
       const m = c.stage === 'offer' && !depth && /^\s*([123])\s*$/.exec(text);
@@ -152,6 +181,7 @@ async function handle(env, from, text, depth = 0, opts = {}) {
       let rep = g.reply;
       if (strict && c.stage !== 'offer' && c.lead.proofOfFunds !== 'received' && /everything i need|all set|you'?re booked/i.test(rep))
         rep = need(c, true)[0] === 'proofOfFunds' && c.lead.proofOfFunds === 'promised' ? `no problem, just send it here whenever you're ready and i'll lock in the viewing as soon as it lands` : rep.replace(/[^.?]*(everything i need|all set|you'?re booked)[^.?]*[.?]?/i, '').trim() || `thanks`;
+      if (!strict && SALE_LEAK.test(rep || '')) rep = rentalAsk(need(c, false)[0]);
       out.push(clean(rep));
     }
   }

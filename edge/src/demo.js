@@ -31,7 +31,7 @@ export async function demoChat(req, env) {
   if (await bump(env, `rl:ip:${ip}:${hour}`, 60, 3700)) return J({ replies: ["sorry, that's a lot of messages for one demo. give it a bit and try again"], limited: true }, 429);
   if (await bump(env, `rl:s:${sid}`, 40, 86400)) return J({ replies: ["that's the end of this demo chat, refresh the page to start again"], limited: true }, 429);
   const r = await handle(env, sid, text, 0, { prefix: 'd:', ttl: 86400, agency: DEMO_AGENCY });
-  return J({ replies: r.replies, stage: r.stage, lead: r.lead, summary: r.agentSummary ? r.agentSummary.replace(/^WhatsApp.*\n/m, 'WhatsApp: the buyer\'s number\n').replace(' – ', ', ').replace(/First contact: (\S+)/, (m, t) => 'First contact: ' + new Date(t).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', dateStyle: 'medium', timeStyle: 'short' })) : null });
+  return J({ replies: r.replies, stage: r.stage, lead: r.lead, summary: r.agentSummary ? r.agentSummary.replace(/^WhatsApp.*\n/m, 'WhatsApp: the lead\'s number\n').replace(' – ', ', ').replace(/First contact: (\S+)/, (m, t) => 'First contact: ' + new Date(t).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', dateStyle: 'medium', timeStyle: 'short' })) : null });
 }
 
 export const DEMO_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8">
