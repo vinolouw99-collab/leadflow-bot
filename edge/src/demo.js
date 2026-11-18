@@ -7,7 +7,8 @@ export const DEMO_AGENCY = {
     { ref: 'SR-101', title: '3 bed family home, Bryanston', price: 'R2,450,000', details: '3 bed, 2 bath, double garage, pool, pet friendly' },
     { ref: 'SR-102', title: '2 bed apartment, Rosebank', price: 'R1,350,000', details: '2 bed, 1 bath, balcony, 24h security, near Gautrain' },
     { ref: 'SR-103', title: '4 bed home, Midrand', price: 'R3,200,000', details: '4 bed, 3 bath, garden, solar, secure estate' },
-    { ref: 'SR-104', title: '6 bed estate home, Sandhurst', price: 'R22,500,000', details: '6 bed, 7 bath, 4,000 sqm stand, pool, tennis court, wine cellar, staff quarters, guarded boomed street, private viewings for verified buyers only' }
+    { ref: 'SR-104', title: '6 bed estate home, Sandhurst', price: 'R22,500,000', details: '6 bed, 7 bath, 4,000 sqm stand, pool, tennis court, wine cellar, staff quarters, guarded boomed street, private viewings for verified buyers only' },
+    { ref: 'SR-105', title: '2 bed apartment to let, Sandton', price: 'R18,000 per month', details: '2 bed, 2 bath, rental, secure complex, parking, available immediately' }
   ],
   viewingSlots: ['Sat 10:00', 'Sat 12:00', 'Sun 14:00', 'Mon 17:30', 'Wed 17:30']
 };
@@ -60,11 +61,11 @@ form button.at{background:none;color:#54656f;width:32px;font-size:20px}
 form button{width:44px;height:44px;border:0;border-radius:50%;background:#00a884;color:#fff;font-size:18px;cursor:pointer}
 .done{background:#e7f6ec;border:1px solid #9fd8b0;color:#0b3d2e;border-radius:8px;padding:10px;margin:8px 0;font-size:13.5px;white-space:pre-wrap}
 </style></head><body><div class="app">
-<div class="brand"><b>LeadFlow</b> <span>try it yourself</span><br>Pretend you're a buyer and message about a listing. Watch it reply in seconds, ask the right questions and book you a viewing, 24/7.</div>
+<div class="brand"><b>LeadFlow</b> <span>try it yourself</span><br>Pretend you're a buyer or tenant and message about a listing. Watch it reply in seconds, ask the right questions and book you a viewing, 24/7.</div>
 <div class="top"><div class="av">SR</div><div><div class="n">Sunset Realty (sample agency)</div><div class="s">digital assistant, replies 24/7</div></div></div>
-<div id="log"><div class="note">Sample listings: 3 bed home in Bryanston R2.45m, 2 bed flat in Rosebank R1.35m, 4 bed home in Midrand R3.2m, 6 bed estate home in Sandhurst R22.5m. Every buyer is qualified the same way, including proof of funds, before a viewing is booked</div></div>
+<div id="log"><div class="note">Sample listings: 3 bed home in Bryanston R2.45m, 2 bed flat in Rosebank R1.35m, 4 bed home in Midrand R3.2m, 6 bed estate home in Sandhurst R22.5m, 2 bed apartment to let in Sandton R18,000 per month. Sale buyers are qualified the same way, including proof of funds, before a viewing is booked. Rentals use a lighter flow</div></div>
 <div class="typing" id="ty"></div>
-<div class="chips" id="chips"><button>Hi, is the Rosebank flat still available?</button><button>Hi, I saw the Bryanston house</button><button>What's the price on the Midrand home?</button><button>Hi, is the Sandhurst estate home still available?</button></div>
+<div class="chips" id="chips"><button>Hi, is the Rosebank flat still available?</button><button>Hi, I saw the Bryanston house</button><button>What's the price on the Midrand home?</button><button>Hi, is the Sandhurst estate home still available?</button><button>Hi, is the Sandton rental still available?</button></div>
 <form id="f"><input type="file" id="fl" hidden><button type="button" id="at" class="at" aria-label="Attach" title="Attach a document (demo, the file stays on your device)">&#128206;</button><input id="t" placeholder="Type a message" autocomplete="off" maxlength="500"><button aria-label="Send">&#10148;</button></form>
 </div><script>
 const log=document.getElementById('log'),f=document.getElementById('f'),t=document.getElementById('t'),ty=document.getElementById('ty'),chips=document.getElementById('chips');
