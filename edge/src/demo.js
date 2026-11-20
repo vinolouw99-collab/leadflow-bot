@@ -74,10 +74,10 @@ const now=()=>new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'
 function add(txt,cls){const d=document.createElement('div');d.className='m '+cls;d.textContent=txt;const i=document.createElement('i');i.textContent=now();d.appendChild(i);log.appendChild(d);log.scrollTop=log.scrollHeight}
 let busy=false;
 async function send(txt){if(busy||!txt.trim())return;busy=true;chips.style.display='none';add(txt,'out');t.value='';ty.textContent='typing...';
- try{const r=await fetch('/demo/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({session:sid,text:txt})});const j=await r.json();
+ try{const go=async()=>{const r=await fetch('/demo/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({session:sid,text:txt})});if(!r.ok)throw 0;return r.json()};let j;try{j=await go()}catch(e1){await new Promise(s=>setTimeout(s,1500));j=await go()}
   for(const m of (j.replies||[])){await new Promise(s=>setTimeout(s,500));add(m,'in')}
   if(j.summary){const d=document.createElement('div');d.className='done';d.textContent='What the agent gets on their phone:\\n\\n'+j.summary.replace(/\\*/g,'');log.appendChild(d);log.scrollTop=log.scrollHeight}
- }catch(e){add('connection dropped, try again','in')}ty.textContent='';busy=false;t.focus()}
+ }catch(e){add('sorry, the signal dropped for a sec, please send that again','in')}ty.textContent='';busy=false;t.focus()}
 const fl=document.getElementById('fl');document.getElementById('at').onclick=()=>fl.click();fl.onchange=()=>{if(fl.files[0])send('\u{1F4CE} '+fl.files[0].name);fl.value=''};
 f.onsubmit=e=>{e.preventDefault();send(t.value)};chips.querySelectorAll('button').forEach(b=>b.onclick=()=>send(b.textContent));
 </script></body></html>`;
