@@ -3,8 +3,26 @@ import CFG from './config.json' with { type: 'json' };
 let A = CFG.agency;
 let ENV = {};
 const RENTAL = ['listing','budget','income','occupants','pets','timeline','name'];
-const HV = ['listing','finance','budget','buyingAs','sourceOfFunds','timeline','homeToSell','name','proofOfFunds'];
-const SALE_ONLY = new Set(['finance','homeToSell','buyingAs','sourceOfFunds','proofOfFunds']);
+const HV = ['listing','finance','budget','buyingAs','sourceOfFunds','saleStatus','timeline','homeToSell','name','proofOfFunds'];
+const SALE_ONLY = new Set(['finance','homeToSell','buyingAs','sourceOfFunds','proofOfFunds','saleStatus']);
+// Source of funds helpers. A buyer paying from the sale of their own property never has to prove funds up front.
+const SALE_WORDS = /\b(sale|sell|sells|selling|sold|proceeds)\b/i;
+const PROP_WORDS = /\b(house|home|place|property|properties|flat|apartment|unit|townhouse|plot|farm|stand|duplex|cottage|current|previous|old|existing)\b/i;
+const fromSale = l => SALE_WORDS.test(`${l.sourceOfFunds || ''} ${l.finance || ''}`) && (PROP_WORDS.test(`${l.sourceOfFunds || ''} ${l.finance || ''}`) || /\bsale of\b|\bproceeds\b/i.test(l.sourceOfFunds || ''));
+const sellingFirst = l => /^\s*(yes|yep|yeah|y)\b|need to sell|have to sell|must sell|selling|on the market|under offer|not sold/i.test(String(l.homeToSell ?? ''));
+const needsSaleStatus = l => fromSale(l) || sellingFirst(l);
+function normSaleStatus(v) {
+  const t = String(v || '').toLowerCase();
+  if (!t) return null;
+  if (/under offer|offer (accepted|in)|accepted (an )?offer|pending|transfer|conveyanc|subject to/.test(t) && !/no offer/.test(t)) return 'under offer';
+  if (/not (yet )?(listed|on the market)|haven'?t listed|not listed|before listing|still to list/.test(t)) return 'not listed yet';
+  if (/not (yet )?sold|unsold|on the market|listed|selling|for sale|still/.test(t)) return 'on the market';
+  if (/\bsold\b|registered|done|already|went through|gone through|completed/.test(t)) return 'sold';
+  return t.slice(0, 40);
+}
+const OWN_PROP = /\b(my|our)\s+(\w+\s+)?(house|home|place|property|flat|apartment|unit|townhouse|farm|plot|duplex|cottage)\b/i;
+const subjectToSale = l => !!l.saleStatus && l.saleStatus !== 'sold';
+const isBond = l => /bond|mortgage|home ?loan/i.test(l.finance || '');
 const SALE_LEAK = /\b(cash or (a )?bond|source of funds|proof of funds|bond approval|pre-?approv|sell (a )?(home|house|property) first|need to sell|buying as)\b/i;
 const kw = x => x.title.toLowerCase().split(/[ ,]+/).filter(w => w.length > 4 && !/house|home|apartment|family|estate/.test(w));
 function guessListing(text) { const t = String(text).toLowerCase(); return (A.listings || []).find(x => t.includes(x.ref.toLowerCase()) || kw(x).some(w => t.includes(w))); }
@@ -18,10 +36,11 @@ function matchedListing(c) {
   const ref = String(l.listingRef || '').toUpperCase(), txt = String(l.listing || '').toLowerCase();
   return ls.find(x => x.ref.toUpperCase() === ref) || ls.find(x => txt && (txt.includes(x.ref.toLowerCase()) || kw(x).some(w => txt.includes(w)))) || null;
 }
-// Strict proof of funds qualification for every buyer, any price. Rentals use a lighter flow (budget, income, occupants, pets, move in date, name).
+// Strict qualification for every buyer, any price (source of funds required, proof of funds optional and never a loop). Rentals use a lighter flow (budget, income, occupants, pets, move in date, name).
 function listingOf(c) { const hit = matchedListing(c); return hit && !isRentalListing(hit) ? hit : null; }
 function strictBuyer(c) { const hit = matchedListing(c); return !(hit && isRentalListing(hit)); }
-const need = (c, strict) => (strict ? HV : RENTAL).filter(k => k === 'proofOfFunds' ? c.lead.proofOfFunds !== 'received' : (c.lead[k] == null || c.lead[k] === ''));
+// proofOfFunds counts as answered once it has any value (received, promised, later, after sale ...). It is optional, never a gate.
+const need = (c, strict) => (strict ? HV : RENTAL).filter(k => k === 'saleStatus' ? needsSaleStatus(c.lead) && !c.lead.saleStatus : (c.lead[k] == null || c.lead[k] === ''));
 const rentalAsk = field => ({
   listing: 'which listing were you enquiring on?',
   budget: 'what is your monthly rental budget?',
@@ -42,7 +61,7 @@ ${strict ? buyerGoal(listing, c) : rentalPrompt(c)}
 Current known lead info: ${JSON.stringify(c.lead)}
 Still missing (ask for the next one in this order, unless their latest message answers it): ${missing.join(', ') || 'nothing'}. Only say you have everything when nothing is missing after this message.
 Stage: ${c.stage}. ${c.stage==='offer'||c.stage==='booking' ? `Offered slots: ${JSON.stringify(c.offered)} (shown to the person as ${c.offered ? c.offered.map(nice).join(', ') : ''}). If they pick one, set chosenSlot to the exact slot string.` : ''}
-Return ONLY JSON: {"reply": string, "lead": ${strict ? '{"name","listing","listingRef","budget","finance","timeline","homeToSell","buyingAs","sourceOfFunds","proofOfFunds"} (fill what you know, null otherwise; listingRef is the ref like SR-101; buyingAs, sourceOfFunds and proofOfFunds are required for every buyer)' : '{"name","listing","listingRef","budget","income","occupants","pets","timeline"} (fill what you know, null otherwise; listingRef is the ref like SR-105; leave finance, homeToSell, buyingAs, sourceOfFunds and proofOfFunds unset)'}, "qualified": boolean (true when nothing is missing), "declined": boolean (for buyer qualification, see above), "chosenSlot": string|null}`;
+Return ONLY JSON: {"reply": string, "lead": ${strict ? '{"name","listing","listingRef","budget","finance","timeline","homeToSell","buyingAs","sourceOfFunds","saleStatus","proofOfFunds"} (fill what you know, null otherwise; listingRef is the ref like SR-101; buyingAs and sourceOfFunds are required for every buyer, saleStatus only when funds come from selling their own property)' : '{"name","listing","listingRef","budget","income","occupants","pets","timeline"} (fill what you know, null otherwise; listingRef is the ref like SR-105; leave finance, homeToSell, buyingAs, sourceOfFunds and proofOfFunds unset)'}, "qualified": boolean (true when nothing is missing), "declined": boolean (for buyer qualification, see above), "chosenSlot": string|null}`;
 }
 
 function buyerGoal(listing, c) {
@@ -65,16 +84,24 @@ Then the system will offer viewing slots.`;
 
 function buyerPrompt(listing, c) {
   const about = listing ? `The buyer is asking about ${listing.title} at ${listing.price}. ` : '';
-  return `BUYER QUALIFICATION. ${about}Viewings are only booked for FICA verified buyers with proven funds, so you qualify like an experienced senior agent who knows the process, warm and respectful but thorough. This replaces the normal qualifying list above. Never pushy, never rude, never accusing. Your first reply confirms the listing is available with one standout detail (or if they haven't named a listing yet, help them pick one), then asks the first missing item. Ask one thing at a time, in this order.
-finance: cash or bond. If bond, ask the bank and whether they have a bond approval or pre approval letter. If cash, the funds must already be in a bank account.
+  const l = c.lead;
+  const proofHint = fromSale(l)
+    ? `This buyer is paying from the sale of their own property. Do NOT ask for proof of funds or bank statements. The system has noted it.`
+    : isBond(l)
+      ? `This is a bond buyer. Their bond pre approval letter IS the proof, never ask for bank statements. If they have a pre approval, ask once if they'd like to send the letter here, it's optional ("if you have the pre approval letter handy you can send it here, otherwise ${A.agentName} can get it later"). If they don't have pre approval yet, offer that ${A.agentName} can help them get pre approved through a bond originator, set proofOfFunds to "pre approval pending, agent to help" and move on.`
+      : `For cash from savings, investments, an inheritance or a business, ask once, phrased as optional, like "if you have a bank letter or recent statement handy you can send it here, otherwise ${A.agentName} can get it from you later". Never insist and never ask again.`;
+  return `BUYER QUALIFICATION. ${about}You qualify like an experienced, smart senior agent who knows the process, warm and respectful but thorough. This replaces the normal qualifying list above. Never pushy, never rude, never accusing. Your first reply confirms the listing is available with one standout detail (or if they haven't named a listing yet, help them pick one), then asks the first missing item. Ask one thing at a time, in this order.
+finance: cash or bond. If bond, ask the bank and whether they already have a bond pre approval. Cash that will come from selling their own property counts as cash, that is completely normal.
 budget: the amount they have available or approved, in Rands (skip it if they already said the amount).
 buyingAs: buying in their personal name, a company or a trust.
-sourceOfFunds: where the funds come from (salary, business, sale of a property, investments, inheritance etc). Frame it politely as a FICA requirement every agency has to ask, nothing personal. If they mention physical cash, a briefcase or cash they want to bring, explain kindly that by law we can't accept cash, the funds need to sit in a South African bank account and come through the bank.
-timeline: when they want to buy. homeToSell: whether they need to sell first.
+sourceOfFunds: where the funds come from (salary, savings, business, sale of their own property, investments, inheritance etc). Frame it politely as a FICA requirement every agency has to ask, nothing personal. Skip it if they already told you. If the money comes from selling their current or previous property (any wording, like "sale of my house", "once my place sells", "proceeds from my property", "when we sell our flat"), set sourceOfFunds to "sale of own property", accept it warmly and never ask them to prove it now. If they mention physical cash, a briefcase or cash they want to bring, explain kindly that by law we can't accept cash, the funds need to sit in a South African bank account and come through the bank.
+saleStatus: only when the funds come from selling their own property or they need to sell first. Ask naturally whether their place is already sold, under offer or still on the market. Set saleStatus to exactly one of "sold", "under offer", "on the market", "not listed yet". When they answer, reply warmly along the lines of "no problem, once your sale goes through ${A.agentName} will just need the sale agreement or a letter from the conveyancer" (if it's already sold say ${A.agentName} will just need the sale agreement or a conveyancer letter, they can send it whenever it suits them) and then ask the next missing item in the same message.
+timeline: when they want to buy. homeToSell: whether they need to sell first (skip it if you already know, for example from saleStatus).
 name: their full name exactly as on their ID, and mention that ${A.agentName} will need their ID and proof of address for FICA before any offer.
-proofOfFunds: ask them to send the bank issued proof of funds letter or recent bank statement showing the funds available now (if bond, the bond approval letter) right here in the chat, it stays confidential and only ${A.agentName} sees it. Set proofOfFunds to "promised" if they say they will send it later, "received" ONLY when they say they have sent or attached it now (e.g. "sent", "just sent it", "attached", "here you go") or the message says they attached a document, and "refused" if they won't share it. If promised, say that's no problem and they can send it here whenever they're ready, the viewing gets locked in as soon as it lands.
-Never say you have everything you need, and never offer or discuss viewing times, before proofOfFunds is received, even if they push. If they ask to view first, explain kindly that we need proof of funds before any viewing.
-Set declined true when the buyer clearly refuses to share proof of funds or source of funds, or dodges it twice. Then your reply must politely say you understand, but you can't book a viewing without it, that the door stays open if they send it later, and offer to keep them posted on other listings. Don't lecture.
+proofOfFunds: optional, never a condition for the viewing. ${proofHint} Set proofOfFunds to "received" ONLY when they say they have sent or attached it now (e.g. "sent", "just sent it", "attached", "here you go") or the message says they attached a document, "promised" if they say they will send it, and "later" if they say no, not now, they'd rather not, or push back in any way. Leave it null until they've answered the proof question.
+Never repeat the same question more than once. If the buyer pushes back or gives a reasonable answer to anything, accept it graciously and move on to the next missing item. Never insist, never loop, never lecture.
+Never say you have everything you need, and never offer or discuss viewing times, while anything is still missing.
+Set declined true ONLY when the buyer clearly refuses to say where the funds come from at all (FICA requires it). Then your reply must politely say you understand, but you can't book a viewing without it, that the door stays open, and offer to keep them posted on other listings. Never set declined because of proof of funds.
 Docs received so far: ${JSON.stringify(c.docs || [])}.`;
 }
 
@@ -130,12 +157,23 @@ function score(l) {
 }
 
 function verified(l) { return l.proofOfFunds === 'received' && !!l.sourceOfFunds; }
+function proofLine(c) {
+  const l = c.lead, p = String(l.proofOfFunds || '');
+  if (p === 'received') return 'received' + (c.docs && c.docs.length ? ' (' + c.docs.join(', ') + ')' : '') + ', agent to check';
+  if (fromSale(l)) return l.saleStatus === 'sold' ? 'to follow, sale agreement or conveyancer letter' : 'after own sale, sale agreement or conveyancer letter';
+  if (p === 'promised') return 'promised, not received';
+  if (/pre ?-?approv/i.test(p)) return 'bond pre-approval pending, agent to help';
+  if (p === 'later') return isBond(l) ? 'pre-approval letter to follow, agent to collect' : 'not sent yet, agent to collect later';
+  return p || 'not provided';
+}
 function summary(c, from) {
   const l = c.lead, listing = listingOf(c);
   if (strictBuyer(c)) {
     const v = verified(l);
     const listed = listing ? `${listing.title} (${listing.price})` : (l.listing || '-');
-    return `*${v ? 'Verified buyer' : 'Not verified'}, ${v ? 'Hot' : 'do not book'}* (${A.name})\nName as on ID: ${l.name || '-'}\nWhatsApp: +${from}\nListing: ${listed}\nBuying as: ${l.buyingAs || '-'}\nFunds: ${l.finance || '-'}\nAmount confirmed: ${l.budget || '-'}\nSource of funds: ${l.sourceOfFunds || 'not given'}\nProof of funds: ${l.proofOfFunds === 'received' ? 'received' + (c.docs && c.docs.length ? ' (' + c.docs.join(', ') + ')' : '') + ', agent to check' : l.proofOfFunds === 'promised' ? 'promised, not received' : 'not provided'}\nFICA (ID, proof of address): requested\nTimeline: ${l.timeline || '-'}\nHome to sell: ${l.homeToSell ?? '-'}\nViewing: ${c.booked || (v ? 'not booked' : 'not booked, funds not verified')}\nFirst contact: ${c.started}`;
+    const head = v ? 'Verified buyer, Hot' : c.stage === 'declined' ? 'Not verified, do not book' : 'Qualified buyer, proof to follow';
+    const sale = needsSaleStatus(l) ? `\nOwn property: ${l.saleStatus || 'status not given'}${subjectToSale(l) ? ', SUBJECT TO SALE OF OWN PROPERTY' : ''}` : '';
+    return `*${head}* (${A.name})\nName as on ID: ${l.name || '-'}\nWhatsApp: +${from}\nListing: ${listed}\nBuying as: ${l.buyingAs || '-'}\nFunds: ${l.finance || '-'}\nAmount confirmed: ${l.budget || '-'}\nSource of funds: ${l.sourceOfFunds || 'not given'}${sale}\nProof of funds: ${proofLine(c)}\nFICA (ID, proof of address): requested\nTimeline: ${l.timeline || '-'}\nHome to sell: ${l.homeToSell === false ? 'no' : l.homeToSell === true ? 'yes' : (l.homeToSell ?? '-')}\nViewing: ${c.booked || 'not booked'}\nFirst contact: ${c.started}`;
   }
   return `*New rental lead – ${score(l)}* (${A.name})\nName: ${l.name || '-'}\nWhatsApp: +${from}\nListing: ${l.listing || '-'}\nBudget: ${l.budget || '-'}\nMonthly income: ${l.income || '-'}\nOccupants: ${l.occupants || '-'}\nPets: ${l.pets || '-'}\nMove in: ${l.timeline || '-'}\nViewing: ${c.booked || 'not booked'}\nFirst contact: ${c.started}`;
 }
@@ -150,12 +188,31 @@ async function handle(env, from, text, depth = 0, opts = {}) {
   const doc = /^\s*📎\s*(.+)/.exec(text);
   if (doc) { (c.docs = c.docs || []).push(doc[1].trim().slice(0, 80)); text = `[buyer attached a document: ${doc[1].trim().slice(0, 80)}]`; }
   if (!c.lead.listing) { const gl = guessListing(text); if (gl) Object.assign(c.lead, { listing: gl.title, listingRef: gl.ref }); }
-  const g = await gemini(c, text);
+  const strict0 = strictBuyer(c);
+  const asking = strict0 && c.stage === 'qualify' && c.history.some(h => h.r === 'bot') ? need(c, true)[0] : null;
+  if (strict0 && c.stage === 'qualify' && SALE_WORDS.test(text) && OWN_PROP.test(text) && !/\?\s*$/.test(text) && !c.lead.sourceOfFunds && need(c, true)[0] !== 'listing') c.lead.sourceOfFunds = 'sale of own property';
+  let g = await gemini(c, text);
   if (c.stage === 'done') { out.push(clean(g.reply)); }
   else {
     const strict = strictBuyer(c);
     const prevPof = c.lead.proofOfFunds;
-    for (const [k, v] of Object.entries(g.lead || {})) if (v !== null && v !== '' && v !== 'null' && (strict || !SALE_ONLY.has(k))) c.lead[k] = v;
+    const applyLead = gl => { for (const [k, v] of Object.entries(gl || {})) if (v !== null && v !== '' && v !== 'null' && (strict || !SALE_ONLY.has(k))) c.lead[k] = v; };
+    applyLead(g.lead);
+    if (strict) {
+      if (c.lead.saleStatus) c.lead.saleStatus = normSaleStatus(c.lead.saleStatus);
+      if (fromSale(c.lead) && (c.lead.homeToSell == null || c.lead.homeToSell === '')) c.lead.homeToSell = c.lead.saleStatus === 'sold' ? 'no, already sold' : 'yes, funds come from that sale';
+      if (fromSale(c.lead) && c.lead.saleStatus && c.lead.proofOfFunds !== 'received') c.lead.proofOfFunds = c.lead.saleStatus === 'sold' ? 'sale agreement to follow' : 'after own sale';
+      if (/^(refused|declined|no|none)$/i.test(String(c.lead.proofOfFunds || ''))) c.lead.proofOfFunds = 'later';
+      // never ask the same thing more than twice: count unanswered turns per field, then accept and move on
+      c.asks = c.asks || {};
+      if (asking && asking !== 'listing' && need(c, true)[0] === asking && !g.declined) {
+        c.asks[asking] = (c.asks[asking] || 0) + 1;
+        if (c.asks[asking] >= 2 && asking !== 'sourceOfFunds') {
+          c.lead[asking] = asking === 'proofOfFunds' ? 'later' : 'not given';
+          if (need(c, true).length) { const g2 = await gemini(c, `${text}\n[note for the assistant, not from the buyer: they did not answer that, accept it and move on to the next missing item without repeating the question]`); if (g2 && g2.reply) { g = { ...g2, declined: false }; applyLead(g2.lead); } }
+        }
+      }
+    }
     if (strict) {
       // code guard: proof only counts as received on an attachment or a clear "sent" message, never on "i'll send it"
       const sentNow = !!doc || /\b(sent|attached|here (it is|you go)|just sen[dt]|have sent|uploaded)\b/i.test(text) && !/\b(will|i'?ll|gonna|going to|later|tomorrow)\b/i.test(text);
@@ -167,20 +224,27 @@ async function handle(env, from, text, depth = 0, opts = {}) {
       c.booked = pick; c.stage = 'done';
       out.push(clean(`perfect you're booked for ${pick}, ${A.agentName} will send you the address and meet you there. just message here if you need to move it`));
       agentSummary = summary(c, from);
-    } else if (strict && c.stage !== 'offer' && (g.declined || c.lead.proofOfFunds === 'refused') && c.lead.proofOfFunds !== 'received') {
-      c.lead.proofOfFunds = 'refused';
+    } else if (strict && c.stage === 'qualify' && g.declined && !c.lead.sourceOfFunds) {
       out.push(clean(g.reply));
       if (c.stage !== 'declined') { c.stage = 'declined'; agentSummary = summary(c, from); }
     } else if ((c.stage === 'qualify' || c.stage === 'declined') && need(c, strict).length === 0) {
       c.offered = A.viewingSlots.slice(0, 3); c.stage = 'offer';
-      out.push(clean(strict ? `perfect thanks ${String(c.lead.name).split(' ')[0]}, got it and passed it to ${A.agentName} to check. you're all set for a private viewing` : `great thanks, thats everything i need`));
+      const first = /not given/.test(c.lead.name) ? '' : ' ' + String(c.lead.name).split(' ')[0];
+      const p = c.lead.proofOfFunds;
+      const lead = !strict ? `great thanks, thats everything i need`
+        : p === 'received' ? `perfect thanks${first}, got it and passed it to ${A.agentName} to check. you're all set for a private viewing`
+        : p === 'later' ? `no problem at all, ${A.agentName} can get that from you later. thanks${first}, thats everything i need`
+        : /pre ?-?approv/i.test(p || '') ? `no problem, ${A.agentName} can help you get pre approved through a bond originator. thanks${first}, thats everything i need`
+        : p === 'promised' ? `perfect thanks${first}, just send it here whenever it suits you. thats everything i need for now`
+        : `perfect thanks${first}, thats everything i need`;
+      out.push(clean(lead));
       out.push(`i've got ${nice(c.offered[0])}, ${nice(c.offered[1])} or ${nice(c.offered[2])} for a viewing, which one suits you?`);
     } else {
       const m = c.stage === 'offer' && !depth && /^\s*([123])\s*$/.exec(text);
       if (m) return handle(env, from, c.offered[m[1] - 1], 1, opts);
       let rep = g.reply;
-      if (strict && c.stage !== 'offer' && c.lead.proofOfFunds !== 'received' && /everything i need|all set|you'?re booked/i.test(rep))
-        rep = need(c, true)[0] === 'proofOfFunds' && c.lead.proofOfFunds === 'promised' ? `no problem, just send it here whenever you're ready and i'll lock in the viewing as soon as it lands` : rep.replace(/[^.?]*(everything i need|all set|you'?re booked)[^.?]*[.?]?/i, '').trim() || `thanks`;
+      if (strict && c.stage !== 'offer' && need(c, true).length && /everything i need|all set|you'?re booked/i.test(rep))
+        rep = rep.replace(/[^.?]*(everything i need|all set|you'?re booked)[^.?]*[.?]?/i, '').trim() || `thanks`;
       if (!strict && SALE_LEAK.test(rep || '')) rep = rentalAsk(need(c, false)[0]);
       out.push(clean(rep));
     }
